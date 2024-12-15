@@ -1,0 +1,231 @@
+local boundaries = {}  -- Table to store all boundaries
+local debugEnabled = true
+local commandPrefix = "/"  -- Command prefix
+
+-- Function to print debug messages if enabled
+local function debugPrint(message)
+    if debugEnabled then
+        print("[DEBUG] " .. message)
+    end
+end
+
+-- Function to create a boundary
+local function createBoundary(position, size, color, transparency)
+    local boundary = Instance.new("Part")
+    boundary.Size = size or Vector3.new(10, 1, 10)
+    boundary.Position = position
+    boundary.Color = color or Color3.fromRGB(255, 0, 0)
+    boundary.Transparency = transparency or 0
+    boundary.Anchored = true
+    boundary.CanCollide = false
+    boundary.Parent = workspace
+    
+    -- Add dynamic lighting (optional)
+    local pointLight = Instance.new("PointLight")
+    pointLight.Parent = boundary
+    pointLight.Range = 20
+    pointLight.Enabled = true
+    
+    table.insert(boundaries, boundary)
+    debugPrint("Created boundary at: " .. tostring(position) .. " with size: " .. tostring(size) .. " and color: " .. tostring(color))
+end
+
+-- Function to remove a boundary
+local function removeBoundary(boundary)
+    if boundary and boundary.Parent then
+        boundary:Destroy()
+        debugPrint("Removed boundary at: " .. tostring(boundary.Position))
+    end
+end
+
+-- Store for all commands and their handlers
+local commandHandlers = {}
+
+-- Command to create a new boundary
+commandHandlers["createboundary"] = function(params)
+    local position = Vector3.new(tonumber(params[1]), tonumber(params[2]), tonumber(params[3]))
+    local size = Vector3.new(tonumber(params[4]), tonumber(params[5]), tonumber(params[6]))
+    local color = Color3.fromRGB(tonumber(params[7]), tonumber(params[8]), tonumber(params[9]))
+    local transparency = tonumber(params[10]) or 0
+
+    createBoundary(position, size, color, transparency)
+end
+
+-- Command to resize all boundaries
+commandHandlers["resize"] = function(params)
+    local newSize = Vector3.new(tonumber(params[1]), tonumber(params[2]), tonumber(params[3]))
+
+    for _, boundary in ipairs(boundaries) do
+        if boundary and boundary.Parent then
+            boundary.Size = newSize
+            debugPrint("Resized boundary at: " .. tostring(boundary.Position) .. " to size: " .. tostring(newSize))
+        end
+    end
+    print("Resized all boundaries to: " .. tostring(newSize))
+end
+
+-- Command to adjust transparency for all boundaries
+commandHandlers["transparency"] = function(params)
+    local transparencyValue = tonumber(params[1])
+
+    for _, boundary in ipairs(boundaries) do
+        if boundary and boundary.Parent then
+            boundary.Transparency = transparencyValue
+            debugPrint("Adjusted transparency for boundary at: " .. tostring(boundary.Position) .. " to: " .. tostring(transparencyValue))
+        end
+    end
+    print("Adjusted transparency for all boundaries to: " .. tostring(transparencyValue))
+end
+
+-- Command to rotate all boundaries
+commandHandlers["rotate"] = function(params)
+    local rotationAngle = tonumber(params[1]) or 0
+
+    for _, boundary in ipairs(boundaries) do
+        if boundary and boundary.Parent then
+            boundary.CFrame = boundary.CFrame * CFrame.Angles(0, math.rad(rotationAngle), 0)
+            debugPrint("Rotated boundary at: " .. tostring(boundary.Position) .. " by angle: " .. tostring(rotationAngle))
+        end
+    end
+    print("Rotated all boundaries by angle: " .. tostring(rotationAngle))
+end
+
+-- Command to create a death boundary (specific boundary type)
+commandHandlers["deathboundary"] = function(params)
+    local position = Vector3.new(tonumber(params[1]), tonumber(params[2]), tonumber(params[3]))
+    createBoundary(position, Vector3.new(10, 1, 10), Color3.fromRGB(255, 0, 0), 0.5)
+    print("Created a death boundary at: " .. tostring(position))
+end
+
+-- Command to create a null boundary (specific boundary type)
+commandHandlers["nullboundary"] = function(params)
+    local position = Vector3.new(tonumber(params[1]), tonumber(params[2]), tonumber(params[3]))
+    createBoundary(position, Vector3.new(10, 1, 10), Color3.fromRGB(0, 255, 0), 1)
+    print("Created a null boundary at: " .. tostring(position))
+end
+
+-- Command to remove all boundaries at once
+commandHandlers["clearallboundaries"] = function()
+    for _, boundary in ipairs(boundaries) do
+        if boundary and boundary.Parent then
+            boundary:Destroy()
+            debugPrint("Removed boundary at: " .. tostring(boundary.Position))
+        end
+    end
+    print("All boundaries have been cleared.")
+end
+
+-- Command to toggle dynamic lighting on or off for all boundaries
+commandHandlers["togglelighting"] = function()
+    for _, boundary in ipairs(boundaries) do
+        if boundary and boundary.Parent then
+            local pointLight = boundary:FindFirstChild("PointLight")
+            if pointLight then
+                pointLight.Enabled = not pointLight.Enabled
+                debugPrint("Toggled dynamic lighting for boundary at: " .. tostring(boundary.Position))
+            end
+        end
+    end
+    print("Toggled dynamic lighting for all boundaries.")
+end
+
+-- Command to show the list of all current boundaries
+commandHandlers["listboundaries"] = function()
+    print("Listing all boundaries:")
+    for i, boundary in ipairs(boundaries) do
+        if boundary and boundary.Parent then
+            print("Boundary " .. i .. ": Position = " .. tostring(boundary.Position) .. ", Size = " .. tostring(boundary.Size))
+        end
+    end
+end
+
+-- Command to remove a specific boundary by index
+commandHandlers["removeboundary"] = function(params)
+    local index = tonumber(params[1])
+    if index and boundaries[index] then
+        boundaries[index]:Destroy()
+        table.remove(boundaries, index)
+        debugPrint("Removed boundary at index: " .. index)
+    else
+        print("Boundary not found or invalid index.")
+    end
+end
+
+-- Command to change boundary color
+commandHandlers["changeboundarycolor"] = function(params)
+    local boundaryIndex = tonumber(params[1])
+    local newColor = Color3.fromRGB(255, 0, 0)  -- Default color is red
+
+    if params[2] then
+        newColor = Color3.fromRGB(tonumber(params[2]), tonumber(params[3]), tonumber(params[4]))
+    end
+
+    if boundaries[boundaryIndex] then
+        boundaries[boundaryIndex].Color = newColor
+        debugPrint("Changed boundary color to: " .. tostring(newColor))
+    else
+        print("Boundary not found!")
+    end
+end
+
+-- Command to set boundary shape (e.g., ball, cylinder)
+commandHandlers["setboundaryshape"] = function(params)
+    local boundaryIndex = tonumber(params[1])
+    local newShape = Enum.PartType.Ball  -- Default shape is Ball
+
+    if params[2] then
+        newShape = Enum.PartType[params[2]]
+    end
+
+    if boundaries[boundaryIndex] then
+        boundaries[boundaryIndex].Shape = newShape
+        debugPrint("Changed boundary shape to: " .. tostring(newShape))
+    else
+        print("Boundary not found!")
+    end
+end
+
+-- Command to change boundary's anchoring
+commandHandlers["toggleanchoring"] = function(params)
+    local boundaryIndex = tonumber(params[1])
+    if boundaries[boundaryIndex] then
+        boundaries[boundaryIndex].Anchored = not boundaries[boundaryIndex].Anchored
+        debugPrint("Toggled anchoring for boundary at index: " .. boundaryIndex)
+    else
+        print("Boundary not found!")
+    end
+end
+
+-- Function to execute commands from the command store
+local function executeCommand(command, params)
+    if commandHandlers[command] then
+        commandHandlers[command](params)
+    else
+        print("Unknown command: " .. command)
+    end
+end
+
+-- Function to listen for commands in the chat
+local function listenForCommands()
+    local inputService = game:GetService("UserInputService")
+    inputService.InputBegan:Connect(function(input, gameProcessedEvent)
+        if gameProcessedEvent then return end
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            local key = input.KeyCode.Name
+            if key == "Slash" then
+                -- Wait for command input in chat
+                local chatMessage = game:GetService("Players").LocalPlayer.PlayerGui.Chat.Frame.MessageArea.MessageLabel.Text
+                if chatMessage then
+                    local command, args = chatMessage:match("^" .. commandPrefix .. "(%S+)%s*(.*)")
+                    if command then
+                        local params = args and string.split(args, " ") or {}
+                        executeCommand(command, params)
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- Start listening for commands
+listenForCommands()
