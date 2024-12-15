@@ -1,231 +1,377 @@
-local boundaries = {}  -- Table to store all boundaries
-local debugEnabled = true
-local commandPrefix = "/"  -- Command prefix
+-- Quantum Nexus Grid & Boundary Control System
+-- This script integrates mathematical functions, scientific principles, and social studies features to provide full grid control and boundary logic.
 
--- Function to print debug messages if enabled
-local function debugPrint(message)
-    if debugEnabled then
-        print("[DEBUG] " .. message)
+-- Services
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local DataStoreService = game:GetService("DataStoreService")
+local Lighting = game:GetService("Lighting")
+
+-- Data Store for player data (optional for storing grid data)
+local playerDataStore = DataStoreService:GetDataStore("PlayerData")
+
+-- Store created grids and grid-related data
+local createdGrids = {}
+local playerCommands = {}
+
+-- Constants and Mathematical Tools
+local EarthRadius = 6371  -- Earth's radius in kilometers for geospatial calculations
+local Pi = math.pi
+local Gravity = 9.81 -- Earth's gravitational acceleration (m/s^2)
+local SpeedOfLight = 299792458 -- Speed of light in meters per second
+
+-- Utility Functions
+local function SendChatMessage(player, message)
+  game.ReplicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(message, "All")
+end
+
+-- Geospatial and Mathematical Calculations
+local function CalculateDistanceBetweenPoints(point1, point2)
+  -- Using the Haversine formula for calculating distance between two points on Earth's surface (in kilometers)
+  local lat1 = math.rad(point1.Y)
+  local lat2 = math.rad(point2.Y)
+  local deltaLat = math.rad(point2.Y - point1.Y)
+  local deltaLon = math.rad(point2.X - point1.X)
+
+  local a = math.sin(deltaLat / 2) * math.sin(deltaLat / 2) +
+  math.cos(lat1) * math.cos(lat2) *
+  math.sin(deltaLon / 2) * math.sin(deltaLon / 2)
+  local c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+  return EarthRadius * c  -- Returns distance in kilometers
+end
+
+local function CalculateGravitationalForce(mass1, mass2, distance)
+  -- Using Newton's Law of Universal Gravitation
+  local G = 6.67430 * math.pow(10, -11)  -- Gravitational constant (m^3 kg^-1 s^-2)
+  return G * (mass1 * mass2) / math.pow(distance, 2)
+end
+
+-- Grid Creation Functions
+local function CreateGridCell(name, sizeX, sizeY, sizeZ, position)
+  local grid = Instance.new("Part")
+  grid.Name = name
+  grid.Size = Vector3.new(sizeX, sizeY, sizeZ)
+  grid.Position = position
+  grid.Anchored = true
+  grid.CanCollide = false
+  grid.Color = Color3.new(0, 1, 0)
+  grid.Parent = Workspace
+  createdGrids[name] = grid
+  return grid
+end
+
+local function CreateGridAroundMap(gridSize)
+  local mapSize = Workspace.CurrentCamera.CFrame.Position
+  for x = -mapSize.X, mapSize.X, gridSize do
+    for z = -mapSize.Z, mapSize.Z, gridSize do
+      CreateGridCell("Grid_" .. x .. "_" .. z, gridSize, 1, gridSize, Vector3.new(x, 0, z))
     end
+  end
+  SendChatMessage(Players.LocalPlayer, "Grids have been created around the map.")
 end
 
--- Function to create a boundary
-local function createBoundary(position, size, color, transparency)
-    local boundary = Instance.new("Part")
-    boundary.Size = size or Vector3.new(10, 1, 10)
-    boundary.Position = position
-    boundary.Color = color or Color3.fromRGB(255, 0, 0)
-    boundary.Transparency = transparency or 0
-    boundary.Anchored = true
-    boundary.CanCollide = false
-    boundary.Parent = workspace
-    
-    -- Add dynamic lighting (optional)
-    local pointLight = Instance.new("PointLight")
-    pointLight.Parent = boundary
-    pointLight.Range = 20
-    pointLight.Enabled = true
-    
-    table.insert(boundaries, boundary)
-    debugPrint("Created boundary at: " .. tostring(position) .. " with size: " .. tostring(size) .. " and color: " .. tostring(color))
-end
-
--- Function to remove a boundary
-local function removeBoundary(boundary)
-    if boundary and boundary.Parent then
-        boundary:Destroy()
-        debugPrint("Removed boundary at: " .. tostring(boundary.Position))
+-- Wall Detection System
+local function DetectWallsAroundPosition(position, detectionRadius)
+  local walls = {}
+  for _, part in pairs(Workspace:GetChildren()) do
+    if part:IsA("Part") and part.CanCollide then
+      local distance = (part.Position - position).Magnitude
+      if distance <= detectionRadius then
+        table.insert(walls, part)
+      end
     end
+  end
+  return walls
 end
 
--- Store for all commands and their handlers
-local commandHandlers = {}
-
--- Command to create a new boundary
-commandHandlers["createboundary"] = function(params)
-    local position = Vector3.new(tonumber(params[1]), tonumber(params[2]), tonumber(params[3]))
-    local size = Vector3.new(tonumber(params[4]), tonumber(params[5]), tonumber(params[6]))
-    local color = Color3.fromRGB(tonumber(params[7]), tonumber(params[8]), tonumber(params[9]))
-    local transparency = tonumber(params[10]) or 0
-
-    createBoundary(position, size, color, transparency)
+-- Directional Commands and Exact Number Reporting
+local function ReportExactPosition(player)
+  local character = player.Character
+  if character then
+    local pos = character.HumanoidRootPart.Position
+    SendChatMessage(player, "Your exact position is: X: " .. math.floor(pos.X) .. ", Y: " .. math.floor(pos.Y) .. ", Z: " .. math.floor(pos.Z))
+  end
 end
 
--- Command to resize all boundaries
-commandHandlers["resize"] = function(params)
-    local newSize = Vector3.new(tonumber(params[1]), tonumber(params[2]), tonumber(params[3]))
+local function ReportGridDirections(gridName)
+  local grid = createdGrids[gridName]
+  if grid then
+    local gridPos = grid.Position
+    SendChatMessage(Players.LocalPlayer, "Grid " .. gridName .. " is located at: X: " .. math.floor(gridPos.X) .. ", Y: " .. math.floor(gridPos.Y) .. ", Z: " .. math.floor(gridPos.Z))
+    SendChatMessage(Players.LocalPlayer, "Grid size: " .. grid.Size.X .. "x" .. grid.Size.Y .. "x" .. grid.Size.Z)
+  else
+    SendChatMessage(Players.LocalPlayer, "Grid not found.")
+  end
+end
 
-    for _, boundary in ipairs(boundaries) do
-        if boundary and boundary.Parent then
-            boundary.Size = newSize
-            debugPrint("Resized boundary at: " .. tostring(boundary.Position) .. " to size: " .. tostring(newSize))
-        end
+-- Advanced Grid Operations
+local function ResizeGrid(gridName, newSizeX, newSizeY, newSizeZ)
+  local grid = createdGrids[gridName]
+  if grid then
+    grid.Size = Vector3.new(newSizeX, newSizeY, newSizeZ)
+    SendChatMessage(Players.LocalPlayer, "Grid " .. gridName .. " resized to: " .. newSizeX .. "x" .. newSizeY .. "x" .. newSizeZ)
+  else
+    SendChatMessage(Players.LocalPlayer, "Grid not found.")
+  end
+end
+
+local function MoveGrid(gridName, newPosition)
+  local grid = createdGrids[gridName]
+  if grid then
+    grid.Position = newPosition
+    SendChatMessage(Players.LocalPlayer, "Grid " .. gridName .. " moved to: " .. newPosition)
+  else
+    SendChatMessage(Players.LocalPlayer, "Grid not found.")
+  end
+end
+
+-- Social Studies Feature: Reporting grid social context
+local function ReportGridSocialContext(gridName)
+  -- Social studies concept: Understanding the grid in context with nearby players and map features.
+  local grid = createdGrids[gridName]
+  if grid then
+    local playerNearby = {}
+    for _, player in pairs(Players:GetPlayers()) do
+      if player.Character and (player.Character.HumanoidRootPart.Position - grid.Position).Magnitude < 50 then
+        table.insert(playerNearby, player.Name)
+      end
     end
-    print("Resized all boundaries to: " .. tostring(newSize))
-end
-
--- Command to adjust transparency for all boundaries
-commandHandlers["transparency"] = function(params)
-    local transparencyValue = tonumber(params[1])
-
-    for _, boundary in ipairs(boundaries) do
-        if boundary and boundary.Parent then
-            boundary.Transparency = transparencyValue
-            debugPrint("Adjusted transparency for boundary at: " .. tostring(boundary.Position) .. " to: " .. tostring(transparencyValue))
-        end
-    end
-    print("Adjusted transparency for all boundaries to: " .. tostring(transparencyValue))
-end
-
--- Command to rotate all boundaries
-commandHandlers["rotate"] = function(params)
-    local rotationAngle = tonumber(params[1]) or 0
-
-    for _, boundary in ipairs(boundaries) do
-        if boundary and boundary.Parent then
-            boundary.CFrame = boundary.CFrame * CFrame.Angles(0, math.rad(rotationAngle), 0)
-            debugPrint("Rotated boundary at: " .. tostring(boundary.Position) .. " by angle: " .. tostring(rotationAngle))
-        end
-    end
-    print("Rotated all boundaries by angle: " .. tostring(rotationAngle))
-end
-
--- Command to create a death boundary (specific boundary type)
-commandHandlers["deathboundary"] = function(params)
-    local position = Vector3.new(tonumber(params[1]), tonumber(params[2]), tonumber(params[3]))
-    createBoundary(position, Vector3.new(10, 1, 10), Color3.fromRGB(255, 0, 0), 0.5)
-    print("Created a death boundary at: " .. tostring(position))
-end
-
--- Command to create a null boundary (specific boundary type)
-commandHandlers["nullboundary"] = function(params)
-    local position = Vector3.new(tonumber(params[1]), tonumber(params[2]), tonumber(params[3]))
-    createBoundary(position, Vector3.new(10, 1, 10), Color3.fromRGB(0, 255, 0), 1)
-    print("Created a null boundary at: " .. tostring(position))
-end
-
--- Command to remove all boundaries at once
-commandHandlers["clearallboundaries"] = function()
-    for _, boundary in ipairs(boundaries) do
-        if boundary and boundary.Parent then
-            boundary:Destroy()
-            debugPrint("Removed boundary at: " .. tostring(boundary.Position))
-        end
-    end
-    print("All boundaries have been cleared.")
-end
-
--- Command to toggle dynamic lighting on or off for all boundaries
-commandHandlers["togglelighting"] = function()
-    for _, boundary in ipairs(boundaries) do
-        if boundary and boundary.Parent then
-            local pointLight = boundary:FindFirstChild("PointLight")
-            if pointLight then
-                pointLight.Enabled = not pointLight.Enabled
-                debugPrint("Toggled dynamic lighting for boundary at: " .. tostring(boundary.Position))
-            end
-        end
-    end
-    print("Toggled dynamic lighting for all boundaries.")
-end
-
--- Command to show the list of all current boundaries
-commandHandlers["listboundaries"] = function()
-    print("Listing all boundaries:")
-    for i, boundary in ipairs(boundaries) do
-        if boundary and boundary.Parent then
-            print("Boundary " .. i .. ": Position = " .. tostring(boundary.Position) .. ", Size = " .. tostring(boundary.Size))
-        end
-    end
-end
-
--- Command to remove a specific boundary by index
-commandHandlers["removeboundary"] = function(params)
-    local index = tonumber(params[1])
-    if index and boundaries[index] then
-        boundaries[index]:Destroy()
-        table.remove(boundaries, index)
-        debugPrint("Removed boundary at index: " .. index)
+    if #playerNearby > 0 then
+      SendChatMessage(Players.LocalPlayer, "Players nearby grid " .. gridName .. ": " .. table.concat(playerNearby, ", "))
     else
-        print("Boundary not found or invalid index.")
+      SendChatMessage(Players.LocalPlayer, "No players nearby grid " .. gridName)
     end
+  end
 end
 
--- Command to change boundary color
-commandHandlers["changeboundarycolor"] = function(params)
-    local boundaryIndex = tonumber(params[1])
-    local newColor = Color3.fromRGB(255, 0, 0)  -- Default color is red
+-- Command Management
+local function ExecuteCommand(player, command, args)
+  if command == "creategridcell" then
+    local name = args[2]
+    local sizeX = tonumber(args[3])
+    local sizeY = tonumber(args[4])
+    local sizeZ = tonumber(args[5])
+    local position = Vector3.new(tonumber(args[6]), tonumber(args[7]), tonumber(args[8]))
+    CreateGridCell(name, sizeX, sizeY, sizeZ, position)
+    SendChatMessage(player, "Grid " .. name .. " created at position " .. position)
+  elseif command == "creategridsaroundmap" then
+    local gridSize = tonumber(args[2])
+    CreateGridAroundMap(gridSize)
+  elseif command == "detectwalls" then
+    local detectionRadius = tonumber(args[2])
+    local walls = DetectWallsAroundPosition(Players.LocalPlayer.Character.HumanoidRootPart.Position, detectionRadius)
+    SendChatMessage(player, "Detected " .. #walls .. " walls in your vicinity.")
+  elseif command == "reportposition" then
+    ReportExactPosition(player)
+  elseif command == "reportgriddirections" then
+    local gridName = args[2]
+    ReportGridDirections(gridName)
+  elseif command == "resizegrid" then
+    local gridName = args[2]
+    local newSizeX = tonumber(args[3])
+    local newSizeY = tonumber(args[4])
+    local newSizeZ = tonumber(args[5])
+    ResizeGrid(gridName, newSizeX, newSizeY, newSizeZ)
+  elseif command == "movegrid" then
+    local gridName = args[2]
+    local newX = tonumber(args[3])
+    local newY = tonumber(args[4])
+    local newZ = tonumber(args[5])
+    MoveGrid(gridName, Vector3.new(newX, newY, newZ))
+  elseif command == "reportsocialcontext" then
+    local gridName = args[2]
+    ReportGridSocialContext(gridName)
+  elseif command == "credits" then
+    SendChatMessage(player, "Quantum Nexus Grid & Boundary Control System made by V2LE.")
+  else
+    SendChatMessage(player, "Unknown command.")
+  end
+end
 
-    if params[2] then
-        newColor = Color3.fromRGB(tonumber(params[2]), tonumber(params[3]), tonumber(params[4]))
+-- Command Listener for Player
+Players.PlayerAdded:Connect(function(player)
+player.Chatted:Connect(function(message)
+local args = string.split(message, " ")
+local command = args[1]:lower()
+
+-- Execute the command
+ExecuteCommand(player, command, args)
+end)
+end)
+
+-- Continued from previous script...
+
+-- Show grid status (Checking if grid is created)
+local function ShowGridStatus(player)
+  if next(createdGrids) == nil then
+    SendChatMessage(player, "No grids have been created yet.")
+  else
+    local gridStatus = "Current Grids: "
+    for gridName, grid in pairs(createdGrids) do
+      gridStatus = gridStatus .. gridName .. " at position: " .. tostring(grid.Position) .. " | "
     end
+    SendChatMessage(player, gridStatus)
+  end
+end
 
-    if boundaries[boundaryIndex] then
-        boundaries[boundaryIndex].Color = newColor
-        debugPrint("Changed boundary color to: " .. tostring(newColor))
+-- Command for showing grid status
+local function ExecuteShowGridStatusCommand(player)
+  ShowGridStatus(player)
+end
+
+-- Physics and Science Features
+
+-- Calculate velocity based on distance and time
+local function CalculateVelocity(distance, time)
+  if time == 0 then return 0 end
+  return distance / time
+end
+
+-- Command to simulate gravitational force
+local function SimulateGravitationalForce(player, mass1, mass2, distance)
+  local force = CalculateGravitationalForce(mass1, mass2, distance)
+  SendChatMessage(player, "The gravitational force between objects of mass " .. mass1 .. "kg and " .. mass2 .. "kg at a distance of " .. distance .. " meters is: " .. force .. " N.")
+end
+
+-- Command to calculate velocity from user input
+local function CalculatePlayerVelocity(player, distance, time)
+  local velocity = CalculateVelocity(distance, time)
+  SendChatMessage(player, "The calculated velocity is: " .. velocity .. " m/s")
+end
+
+-- Command for scientific principles and laws
+local function ExecuteScientificCommands(player, command, args)
+  if command == "velocity" then
+    local distance = tonumber(args[2])
+    local time = tonumber(args[3])
+    CalculatePlayerVelocity(player, distance, time)
+  elseif command == "gravitationalforce" then
+    local mass1 = tonumber(args[2])
+    local mass2 = tonumber(args[3])
+    local distance = tonumber(args[4])
+    SimulateGravitationalForce(player, mass1, mass2, distance)
+  elseif command == "speedoflight" then
+    SendChatMessage(player, "The speed of light is " .. SpeedOfLight .. " meters per second.")
+  else
+    SendChatMessage(player, "Unknown scientific command.")
+  end
+end
+
+-- Social Studies & Community Features
+
+-- Track and report player interactions with grids (Social context of interactions)
+local function ReportGridInteractionContext(player, gridName)
+  local grid = createdGrids[gridName]
+  if grid then
+    local playersNearby = {}
+    for _, otherPlayer in pairs(Players:GetPlayers()) do
+      if otherPlayer.Character and (otherPlayer.Character.HumanoidRootPart.Position - grid.Position).Magnitude < 50 then
+        table.insert(playersNearby, otherPlayer.Name)
+      end
+    end
+    if #playersNearby > 0 then
+      SendChatMessage(player, "Players interacting with grid " .. gridName .. ": " .. table.concat(playersNearby, ", "))
     else
-        print("Boundary not found!")
+      SendChatMessage(player, "No players interacting with grid " .. gridName)
     end
+  else
+    SendChatMessage(player, "Grid not found.")
+  end
 end
 
--- Command to set boundary shape (e.g., ball, cylinder)
-commandHandlers["setboundaryshape"] = function(params)
-    local boundaryIndex = tonumber(params[1])
-    local newShape = Enum.PartType.Ball  -- Default shape is Ball
-
-    if params[2] then
-        newShape = Enum.PartType[params[2]]
-    end
-
-    if boundaries[boundaryIndex] then
-        boundaries[boundaryIndex].Shape = newShape
-        debugPrint("Changed boundary shape to: " .. tostring(newShape))
-    else
-        print("Boundary not found!")
-    end
+-- Command for social studies interaction context
+local function ExecuteSocialStudiesCommands(player, command, args)
+  if command == "reportgridinteraction" then
+    local gridName = args[2]
+    ReportGridInteractionContext(player, gridName)
+  else
+    SendChatMessage(player, "Unknown social studies command.")
+  end
 end
 
--- Command to change boundary's anchoring
-commandHandlers["toggleanchoring"] = function(params)
-    local boundaryIndex = tonumber(params[1])
-    if boundaries[boundaryIndex] then
-        boundaries[boundaryIndex].Anchored = not boundaries[boundaryIndex].Anchored
-        debugPrint("Toggled anchoring for boundary at index: " .. boundaryIndex)
-    else
-        print("Boundary not found!")
+-- Boundary Detection and Calculation
+
+-- Detecting boundaries of created grids
+local function DetectBoundaryOfGrid(gridName)
+  local grid = createdGrids[gridName]
+  if grid then
+    local boundary = {
+      topLeft = grid.Position + Vector3.new(-grid.Size.X / 2, 0, grid.Size.Z / 2),
+      topRight = grid.Position + Vector3.new(grid.Size.X / 2, 0, grid.Size.Z / 2),
+      bottomLeft = grid.Position + Vector3.new(-grid.Size.X / 2, 0, -grid.Size.Z / 2),
+      bottomRight = grid.Position + Vector3.new(grid.Size.X / 2, 0, -grid.Size.Z / 2),
+    }
+    return boundary
+  else
+    SendChatMessage(Players.LocalPlayer, "Grid not found.")
+    return nil
+  end
+end
+
+-- Command for reporting grid boundaries
+local function ReportGridBoundary(player, gridName)
+  local boundary = DetectBoundaryOfGrid(gridName)
+  if boundary then
+    SendChatMessage(player, "Boundary coordinates of grid " .. gridName .. " are:")
+    SendChatMessage(player, "Top Left: " .. tostring(boundary.topLeft))
+    SendChatMessage(player, "Top Right: " .. tostring(boundary.topRight))
+    SendChatMessage(player, "Bottom Left: " .. tostring(boundary.bottomLeft))
+    SendChatMessage(player, "Bottom Right: " .. tostring(boundary.bottomRight))
+  end
+end
+
+-- Combine all commands and features in a comprehensive function
+local function ExecuteAllCommands(player, command, args)
+  if command == "showgridstatus" then
+    ExecuteShowGridStatusCommand(player)
+  elseif command == "velocity" or command == "gravitationalforce" or command == "speedoflight" then
+    ExecuteScientificCommands(player, command, args)
+  elseif command == "reportgridinteraction" then
+    ExecuteSocialStudiesCommands(player, command, args)
+  elseif command == "reportboundary" then
+    ReportGridBoundary(player, args[2])
+  else
+    SendChatMessage(player, "Invalid command, please try again.")
+  end
+end
+
+-- Handling Player Chat Input for Command Execution
+Players.PlayerAdded:Connect(function(player)
+player.Chatted:Connect(function(message)
+local args = string.split(message, " ")
+local command = args[1]:lower()
+
+-- Execute the command based on player input
+ExecuteAllCommands(player, command, args)
+end)
+end)
+
+-- Providing system feedback for when a player enters or exits a grid
+RunService.Heartbeat:Connect(function()
+for _, player in pairs(Players:GetPlayers()) do
+  if player.Character then
+    local playerPos = player.Character.HumanoidRootPart.Position
+    for gridName, grid in pairs(createdGrids) do
+      if (playerPos - grid.Position).Magnitude < grid.Size.X then
+        -- Player enters the grid's area, notify them
+        SendChatMessage(player, "You have entered grid " .. gridName)
+      end
     end
+  end
+end
+end)
+
+-- Providing feedback for system information and data
+local function ProvideSystemInfo()
+  SendChatMessage(Players.LocalPlayer, "System Info: Quantum Nexus Grid & Boundary Control System Online")
+  SendChatMessage(Players.LocalPlayer, "This system uses advanced mathematical, scientific, and social principles.")
 end
 
--- Function to execute commands from the command store
-local function executeCommand(command, params)
-    if commandHandlers[command] then
-        commandHandlers[command](params)
-    else
-        print("Unknown command: " .. command)
-    end
-end
+-- Execute system info on startup
+ProvideSystemInfo()
 
--- Function to listen for commands in the chat
-local function listenForCommands()
-    local inputService = game:GetService("UserInputService")
-    inputService.InputBegan:Connect(function(input, gameProcessedEvent)
-        if gameProcessedEvent then return end
-        if input.UserInputType == Enum.UserInputType.Keyboard then
-            local key = input.KeyCode.Name
-            if key == "Slash" then
-                -- Wait for command input in chat
-                local chatMessage = game:GetService("Players").LocalPlayer.PlayerGui.Chat.Frame.MessageArea.MessageLabel.Text
-                if chatMessage then
-                    local command, args = chatMessage:match("^" .. commandPrefix .. "(%S+)%s*(.*)")
-                    if command then
-                        local params = args and string.split(args, " ") or {}
-                        executeCommand(command, params)
-                    end
-                end
-            end
-        end
-    end)
-end
-
--- Start listening for commands
-listenForCommands()
+-- Finalize
+print("Quantum Nexus Grid & Boundary Control System Loaded Successfully")
